@@ -1,0 +1,38 @@
+"Containers" are html-only widgets for Django.
+Invaluable for complex designs.
+
+    Example::
+
+        ::sample.html::
+        {% load container_tags %}
+    
+        {% container "greetings.html" %}
+            {% part left %}Hello{% endpart %}
+            {% part right %}World{% endpart %}
+        {% endcontainer %}
+
+        ::foo/some_container.html::
+
+        {{ left }}, {{ right }}!
+
+    Another example::
+
+        Based on http://www.oscaralexander.com/tutorials/how-to-make-sexy-buttons-with-css.html
+        Use css code from some tutorial site and the following container:
+
+        ::buttons.html::
+    
+        <a {{ attrs }} class="button" href="{{ href }}" onclick="this.blur(); "><span>{{ name }}</span></a>
+        
+    Sample usage:
+        {% container "styles//button.html" %}
+        {% part href %}{% block submit-link %}{% url submit %}{% endblock %}{% endpart %}
+        {% part name %}{% trans "Submit" %}{% endpart %}
+        {% part attrs %}id="{{ form.name }}-submit"{% endpart %}
+        {% endcontainer %}
+
+Features:
+ * Can be installed as builtins (with "import containers.as_builtins" from your urls.py)
+ * Can use variable template name for container instead of constant.
+ * If some part is not defined, variable with that name is used, empty if no such variable exists.
+ * Raises TemplateSyntaxError if any part is used twice.
