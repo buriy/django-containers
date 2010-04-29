@@ -47,3 +47,4 @@ Advanced features:
  * Can use variable template name for container instead of constant.
  * If some part is not defined, variable with that name is used, empty if no such variable exists.
  * Raises TemplateSyntaxError if any part is used twice.
+ * Sexy css buttons example included!

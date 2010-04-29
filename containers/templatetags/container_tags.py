@@ -3,7 +3,6 @@ from django.template import Node
 from django.template import TemplateSyntaxError
 from django.template import Variable
 from django.template.loader import get_template
-from django.utils.safestring import mark_safe
 from django.template import Library
 
 register = Library()
