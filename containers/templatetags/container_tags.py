@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.template import Node
+from django.template import Node, Template, FilterExpression
 from django.template import TemplateSyntaxError
 from django.template import Variable
 from django.template.loader import get_template
@@ -14,57 +14,61 @@ class PartNode(Node):
     def __repr__(self):
         return "<Part Node: %s. Contents: %r>" % (self.name, self.nodelist)
 
+    def get_nodes_by_type(self, nodetype):
+        # we accept Part in part, but get_nodes_by_type
+        # should return only the outmost ones
+        if issubclass(nodetype, PartNode):
+            return self
+        return super(PartNode, self).get_nodes_by_type(nodetype)
+
     def render(self, context):
+        return ''
+
+    def render_value(self, context):
         return self.nodelist.render(context)
 
     def super(self):
         return ''
 
 
-class ConstantContainerNode(Node):
-    def __init__(self, template_path, nodelist):
-        try:
-            t = get_template(template_path)
-            self.template = t
-        except:
-            if settings.TEMPLATE_DEBUG:
-                raise
-            self.template = None
-        self.nodelist = nodelist
-
-    def render(self, context):
-        if self.template:
-            context.push()
-            
-            for part in self.nodelist.get_nodes_by_type(PartNode):
-                value = part.render(context)
-                context[part.name] = value 
-
-            result = self.template.render(context)
-            
-            context.pop()
-            return result
-        else:
-            return ''
-
-
 class ContainerNode(Node):
-    def __init__(self, template_name, nodelist):
-        self.template_name = Variable(template_name)
-        self.nodelist = nodelist
+    def __init__(self, template, nodelist, refs={}):
+        self.nodelist, self.refs, self.template = nodelist, refs, template
+        if not isinstance(template, (Variable, Template, FilterExpression)):
+            # find template right here to speed up error detection
+            try:
+                self.template = get_template(template)
+            except:
+                if settings.TEMPLATE_DEBUG:
+                    raise
+                self.template = None
+
+    def get_template(self, context):
+        template = self.template
+        if isinstance(template, (Variable, FilterExpression)):
+            template = template.resolve(context)
+        if not isinstance(template, Template):
+            template = get_template(template)
+        return template
 
     def render(self, context):
         try:
-            template_name = self.template_name.resolve(context)
-            t = get_template(template_name)
-            
+            text = self.nodelist.render(context)
+            template = self.get_template(context)
+
             context.push()
             
+            context['context'] = text
+            context['text'] = text.strip()
+            
             for part in self.nodelist.get_nodes_by_type(PartNode):
-                value = part.render(context)
-                context[part.name] = value 
+                value = part.render_value(context)
+                context[part.name] = value
+            
+            for name, value in self.refs.items():
+                context[name] = value.resolve(context)
 
-            result = t.render(context)
+            result = template.render(context)
             
             context.pop()
             
@@ -73,7 +77,9 @@ class ContainerNode(Node):
             if settings.TEMPLATE_DEBUG:
                 raise
             return ''
-        except:
+        except: #NoneType has no method ...
+            if settings.TEMPLATE_DEBUG:
+                raise
             return '' # Fail silently for invalid included templates.
 
 def do_container(parser, token):
@@ -94,13 +100,13 @@ def do_container(parser, token):
     
     parent_loaded_parts = getattr(parser, '__loaded_parts', [])
     parser.__loaded_parts = []
-    nodelist = parser.parse('endcontainer')
+    nodelist = parser.parse(['endcontainer'])
     parser.delete_first_token()
     parser.__loaded_parts = parent_loaded_parts 
-    
+
     if path[0] in ('"', "'") and path[-1] == path[0]:
-        return ConstantContainerNode(path[1:-1], nodelist)
-    return ContainerNode(bits[1], nodelist)
+        return ContainerNode(path[1:-1], nodelist)
+    return ContainerNode(Variable(bits[1]), nodelist)
 do_container = register.tag('container', do_container)
 
 
@@ -128,3 +134,48 @@ def do_part(parser, token):
     parser.delete_first_token()
     return PartNode(part_name, nodelist)
 do_part = register.tag('part', do_part)
+
+
+def prepare_refs(parser, bits):
+    refs = {}
+    for x in bits:
+        k, v = x.split('=', 1)
+        refs[k] = parser.compile_filter(v)
+    return refs
+
+
+def do_render(parser, token):
+    """
+    Loads a template and renders it with the current context.
+
+    Example::
+
+        {% render "foo/some_include" left_inner="this" right_inner="the" %}
+            {# Hi #} is {# content! #}
+            {% part left %}Hi, {% endpart %}
+            {% part right %}content!{% endpart %}
+        {% endrender %}
+        
+    with the template 
+
+        {{ left }} {{ left_inner }} {{ text }} {{ right_inner }} {{ right }}
+    
+    will render
+    
+        Hi, this is the content!
+    
+    """
+    bits = token.split_contents()
+    if len(bits) < 2:
+        raise TemplateSyntaxError, "%r tag is missing the name of the template to be included" % bits[0]
+    
+    parent_loaded_parts = getattr(parser, '__loaded_parts', [])
+    parser.__loaded_parts = []
+    nodelist = parser.parse(['endrender'])
+    parser.delete_first_token()
+    parser.__loaded_parts = parent_loaded_parts 
+    
+    refs = prepare_refs(parser, bits[2:])
+    first = parser.compile_filter(bits[1])
+    return ContainerNode(first, nodelist, refs)
+do_render = register.tag('render', do_render)
