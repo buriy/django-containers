@@ -1,1 +1,1 @@
-<a {% firstof attrs "class='button'" %} href="{{ url }}" onclick="this.blur();"><span>{{ text }}</span></a>
+<a {{ attrs }} class='{% firstof classes "button" %}' href="{{ url }}" onclick="this.blur();"><span>{{ text }}</span></a>

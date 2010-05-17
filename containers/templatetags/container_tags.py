@@ -58,7 +58,7 @@ class ContainerNode(Node):
 
             context.push()
             
-            context['context'] = text
+            context['content'] = text
             context['text'] = text.strip()
             
             for part in self.nodelist.get_nodes_by_type(PartNode):
@@ -84,6 +84,7 @@ class ContainerNode(Node):
 
 def do_container(parser, token):
     """
+    Deprecated. Provided only for compatibility with older version.
     Loads a template and renders it with the current context.
 
     Example::
